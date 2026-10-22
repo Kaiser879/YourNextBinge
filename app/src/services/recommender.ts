@@ -58,6 +58,10 @@ export function passesStrictFilters(
   title: Title,
   filters: Required<Pick<RecommendationFilters, 'mood'>> & RecommendationFilters,
 ): boolean {
+  if (!title.moods.includes(filters.mood)) {
+    return false;
+  }
+
   if (filters.maxRuntimeMinutes != null) {
     if (title.runtime != null && title.runtime > filters.maxRuntimeMinutes) {
       return false;
@@ -180,8 +184,9 @@ function rank(titles: Title[], filters: RecommendationFilters): Recommendation[]
 
 /**
  * Filter, score, rank, and explain. If strict filters yield nothing we relax
- * constraints one at a time (intensity, then genre, then runtime) so the UI can
- * always show something and say what it loosened. Mood is the last thing to go.
+ * constraints one at a time (intensity, then genre, then era, then runtime) so
+ * the UI can always show something and say what it loosened. Mood is the last
+ * thing to go.
  */
 export function recommend(
   filters: RecommendationFilters,
@@ -227,13 +232,15 @@ export function recommend(
   }
 
   if (ranked.length === 0) {
-    // Final safety net: never render a blank screen. Rank the whole catalog
-    // for the chosen mood, then for sanity across all titles.
+    // Final safety net: fall back to mood matches, then to the whole catalog.
+    // Only report "mood" as relaxed when the mood itself had to be ignored.
     const moodMatches = catalog.filter((title) =>
       title.moods.includes(filters.mood),
     );
     ranked = rank(moodMatches.length > 0 ? moodMatches : catalog, filters);
-    relaxedConstraints.push('mood');
+    if (moodMatches.length === 0) {
+      relaxedConstraints.push('mood');
+    }
   }
 
   return {
