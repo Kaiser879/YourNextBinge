@@ -1,0 +1,17 @@
+# Dependencies & build outputs
+node_modules/
+build/
+dist/
+buildinfo.json
+
+# Logs & debugging artifacts
+*.log
+*.hprof
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.iml
