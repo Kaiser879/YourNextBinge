@@ -14,7 +14,7 @@ The app answers the *real* question behind "what should I watch": not "what exis
 Three pillars:
 
 1. **Availability is the filter, not an afterthought.** Every row, search result, and detail screen is scoped to streaming services configured for India. If a search result isn't legally streamable, it doesn't appear.
-2. **The catalog is live, the index is local.** TMDB supplies titles, metadata, availability, and trailers. A bundled ~1 MB static embedding index makes *semantic search* work with no server and no neural runtime.
+2. **The catalog is live; search is hybrid.** TMDB supplies titles, metadata, availability, and trailers. The document vectors ship inside the app (<2 MB), and a small server encodes the free-form query with a real sentence-embedding model (`all-MiniLM-L6-v2`) — so semantic search runs true transformer quality without needing a neural runtime on-device.
 3. **It remembers you.** A watchlist persisted on-device survives restarts. The same five results can never happen twice — the feed is live.
 
 ---
@@ -106,35 +106,41 @@ third-party navigation stack risk on Vega). New screens: `search`, `settings`,
   the button hides and detail falls back to backdrop imagery. Trailer is a
   cut-able feature (see §6 cut order), never a blocker.
 
-### 4.5 Semantic search (the "embedded model")
+### 4.5 Semantic search (embeddings, server-encoded)
 
-**Constraint:** Vega RN has no on-device neural runtime (no ONNX/TFLite without a
-hand-written native module). A true MiniLM-at-runtime is out of scope. The design
-below is a *real embedded model*, distilled rather than neural:
+**Architecture: hybrid.** Vega RN has no on-device neural runtime (no ONNX/TFLite
+without a hand-written native module), so the **query is encoded on a small
+server** running a *real* sentence model, while the **search corpus (doc
+vectors) ships inside the app**. One round-trip per search; all similarity math
+happens on-device against bundled vectors.
 
-- **Offline build step** (Python, `tools/embed/`, committed and reproducible):
-  1. Fetch ~1,200 India-available titles from `/discover` (≤60 pages,
-     with `overview`, genres, `keywords`), plus overview+keywords text.
-  2. Load **GloVe 6B 50d** (downloaded once onto the host, not shipped whole),
-     prune to ~15k most-frequent English words + movie-domain vocabulary
-     (TMDB keyword tokens), **int8-quantize** → ~0.75 MB vocabulary table.
-  3. Compute each doc's vector as the **IDF-weighted mean of token vectors**,
-     stored as float32 (1,200 × 50 ≈ 240 KB).
-  4. Ship: `doc_ids + titles + doc_vectors + vocab_table + idf` (~1 MB total).
-- **On-device runtime** (pure JS, one matrix pass): tokenize query → mean token
-  vector (same IDF weighting) → L2 normalize → cosine vs 1,200 docs → top-k.
-  ~60k multiply-adds. Sub-10 ms on Hermes.
-- **Why GloVe-mean instead of LSA:** one consistent space for queries and docs,
-  no training, robust at tiny corpus sizes, and the host has numpy only.
-- **What it powers:** the search screen ("cosy sci-fi", "sad but hopeful space
-  movie"), **More like this** (doc↔doc cosine, replacing v1's mood/genre overlap
-  heuristic), and a small re-rank boost on the live rows.
+- **Server** (`tools/server/embed_server.py`, FastAPI):
+  - `POST /embed {"texts": ["…"]} → {"vectors": [[…384 floats…]]}` — the only endpoint.
+  - Model: `sentence-transformers/all-MiniLM-L6-v2` (90 MB, ~10–30 ms/query on CPU).
+  - Host: **laptop-local FastAPI for the dev/demo cycle** — no cloud, no cold
+    start, no rate limits. The *same* code deploys to Render/fly.io/HF endpoint
+    when you want a public deployment; nothing in the app changes except the base URL.
+- **Offline build step** (`tools/embed/build_index.py`, committed, reproducible):
+  1. Fetch ~1,200 India-available titles from `/discover` (≤60 pages) with
+     `overview`, genres, `keywords`; corpus text = `title + overview + genres + keywords`.
+  2. Embed the corpus with the **same** server/model → L2-normalized doc vectors
+     (1,200 × 384 float32 ≈ 1.8 MB — no quantization needed at this size).
+  3. Ship in the bundle: `ids + titles + doc_vectors (+ top provider)` → **≈2 MB total**.
+- **On-device runtime (pure JS, one matrix pass):** POST query → `/embed` →
+  L2-normalize → cosine vs 1,200 × 384 docs (460k float ops, sub-10 ms in
+  Hermes) → top-k. End-to-end latency dominated by the single round-trip
+  (<200 ms on LAN).
+- **What it powers:** the Search screen ("cosy sci-fi", "sad but hopeful space
+  movie", "funny heist film"); **More like this** via bundled doc↔doc cosine
+  (zero server latency, fully offline once loaded); optional re-rank of live rows.
 - **Because the corpus is availability-scoped, search results are inherently
   watchable in India.** That is the demo's money shot.
-- **Known limitation (stated in demo + README):** 50-d static vectors are
-  latent-semantic quality, not transformer quality. A remote embedding endpoint
-  would raise quality but adds a server and defeats "embedded" — documented, not built.
-- **Fallback:** TMDB `/search/movie` keyword search, clearly labeled.
+- **Fallbacks (in order):** ① remote cloud endpoint of the same server image; ②
+  TMDB `/search/movie` keyword search, clearly labeled; ③ LSA/numpy-only local
+  embeddings — degraded quality, honest labeling.
+- **Server-absent behavior:** the Search screen opens, explains its state, and
+  never hangs. The rest of the app is unaffected — this server is stateless and
+  optional to every other feature.
 
 ---
 
@@ -169,6 +175,7 @@ below is a *real embedded model*, distilled rather than neural:
 | HTTPS networking | Allowed by default | Only `http://` needs a manifest cleartext allowlist |
 | TV keyboard | `[[wants.service]] id = "com.amazon.inputmethod.service"` in `manifest.toml` | `TextInput` + system keyboard, `Keyboard` API |
 | Trailer playback | `@amazon-devices/webview` + `webview.renderer_service`, `media.server`, `mediametrics`, `mediabuffer`, `mediatransform`, `audio.stream`, `audio.control`, `gipc.uuid.*` | Spike before commit — YouTube iframe |
+| Query embedding | HTTPS POST to the local FastAPI server (QEMU gateway / forwarded port) | Spike: reachability + latency from VVD |
 | Watchlist persistence | AsyncStorage via kepler | Verify the 0.83 import path exists (spike) |
 | Offline fallback | v1 bundled catalog + relaxation ladder | Already built and tested |
 
@@ -176,20 +183,21 @@ below is a *real embedded model*, distilled rather than neural:
 
 ## 8. Build plan (one day)
 
-**Go/no-go gate at hour 5:** semantic search must produce sane rankings for ~5
-test queries ("cosy sci-fi", "heist, funny", "sad but hopeful space", "Tamil
-thriller", "comfort 90s"). Otherwise keyword search ships and §4.5 is labeled
-"next".
+**Go/no-go gate at hour 5:** the embedding server must be up and respond correct
+rankings for ~5 free-form queries ("cosy sci-fi", "heist, funny", "sad but
+hopeful space movie", "comfort 90s", "underdog sports drama") in <500 ms each
+from the VVD. Otherwise keyword search ships and §4.5 is labeled "next".
 
 | Time | Work |
 |---|---|
-| 0:00–0:30 | Spikes in parallel: VVD→TMDB HTTPS, poster image load, keyboard, YouTube WebView, AsyncStorage on 0.83. *If VVD has no internet → stop, tell user.* |
+| 0:00–0:30 | Spikes in parallel: VVD→TMDB HTTPS, poster image load, keyboard, YouTube WebView, AsyncStorage on 0.83, **VVD→host server reachability**. In background: server venv + torch install (`uv`, Python 3.12 wheel) + model download. *If VVD has no internet → stop, tell user.* |
 | 0:30–2:30 | tmdb.ts + manifest services + Home rows (trending, my services, my list, search, vibe, shortcuts) |
 | 2:30–3:15 | Detail + availability chips |
 | 3:15–3:45 | Settings (service picker) + persistence |
 | 3:45–4:30 | Watchlist + My List row |
 | 4:30–5:00 | Trailer modal or cut; first full-flow device run buffer |
-| 5:00–8:00 | Semantic search (index build → runtime → screen) |
+| 5:00–5:30 | `build_index.py` run via the live server → bundle the doc-vector module |
+| 5:30–8:00 | Search screen: server round-trip, on-device cosine, results with availability badges; wire More-like-this to bundled cosine
 | 8:00–9:00 | Tests (mocked fetch), lint, tsc, Release build, VVD run |
 | 9:00–9:30 | Commit `feat/live-discovery`, merge to `main`, demo script |
 
@@ -215,8 +223,10 @@ drop the claim) → ③ More-like-this row → ④ provider logos.
 | TMDB key activation delay | User signs up first; spikes run while it activates |
 | JustWatch/IN provider coverage gaps | Row shows what the data says; demo script avoids claiming exhaustiveness |
 | YouTube iframe blocked/heavy on TV Chromium | Spike; fallback = backdrop + trailer button hidden |
-| GloVe download fails / index quality poor | LSA fallback (numpy-only SVD) or keyword search; §4.5 has an explicit hour-5 kill switch |
 | AsyncStorage path changed in RN 0.83 | Spike with a one-line write/read test; alternative = Vega File System |
+| torch/server install fails (host Python 3.14 has no torch wheel) | Server runs in its own `uv` venv on Python 3.12; host app build unaffected. Worst case: LSA/numpy-only build from §4.5 fallback |
+| Server unreachable from VVD (QEMU gateway) | Spike; try forwarded port. Worst case: keyword search ships; nothing else degrades |
+| Server crash/latency mid-demo | Server runs on the laptop — no cloud cold start; health-checked before recording; single stateless endpoint |
 | Scope creep | Cut order exists; anyone adding scope must name which cut it displaces |
 
 ---
@@ -236,4 +246,4 @@ Closer: *"The TV already knows what exists. We answer what you can watch tonight
 
 ---
 
-*Concept v2 — availability-driven discovery with a distilled local embedding index.*
+*Concept v2 — availability-driven discovery with server-encoded embeddings over a bundled vector index.*
