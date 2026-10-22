@@ -16,9 +16,8 @@ Thumbs.db
 *.swp
 *.iml
 
-# Docs stay local (not published)
+# Local design notes (not published)
 AGENTS.md
 HANDOFF.md
-README.md
 concept.md
 your-next-binge-vega-spec.md

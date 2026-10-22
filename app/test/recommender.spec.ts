@@ -84,6 +84,16 @@ describe('recommender', () => {
     expect(result.relaxedConstraints).toContain('runtime');
   });
 
+  it('falls back to the whole catalog and reports mood when nothing carries it', () => {
+    const catalog = [makeTitle({id: 'only-cozy', moods: ['cozy']})];
+
+    const result = recommend({mood: 'funny'}, catalog);
+
+    expect(result.results.map((r) => r.title.id)).toEqual(['only-cozy']);
+    expect(result.wasRelaxed).toBe(true);
+    expect(result.relaxedConstraints).toEqual(['mood']);
+  });
+
   it('breaks ties deterministically by rating, then year, then id', () => {
     const catalog = [
       makeTitle({id: 'b-old-lower', year: 2001, rating: 7}),
