@@ -5,16 +5,19 @@ import * as React from 'react';
 import {App} from '../src/App';
 
 describe('Your Next Binge app flow', () => {
-  it('opens on the mood selection screen', () => {
+  it('opens on the mood selection screen when live data is unavailable', async () => {
     const screen = render(<App />);
 
-    expect(screen.getByText('What are you in the mood for?')).toBeTruthy();
+    expect(
+      await screen.findByText('What are you in the mood for?'),
+    ).toBeTruthy();
     expect(screen.getByTestId('mood-cozy')).toBeTruthy();
     expect(screen.getByTestId('mood-thought-provoking')).toBeTruthy();
   });
 
-  it('moves from mood selection to refinement', () => {
+  it('moves from mood selection to refinement', async () => {
     const screen = render(<App />);
+    await screen.findByTestId('mood-cozy');
 
     fireEvent.press(screen.getByTestId('mood-cozy'));
     fireEvent.press(screen.getByTestId('mood-continue'));
@@ -23,8 +26,9 @@ describe('Your Next Binge app flow', () => {
     expect(screen.getByTestId('refine-submit')).toBeTruthy();
   });
 
-  it('shows ranked results after submitting filters', () => {
+  it('shows ranked results after submitting filters', async () => {
     const screen = render(<App />);
+    await screen.findByTestId('mood-funny');
 
     fireEvent.press(screen.getByTestId('mood-funny'));
     fireEvent.press(screen.getByTestId('mood-continue'));
@@ -35,8 +39,9 @@ describe('Your Next Binge app flow', () => {
     expect(screen.getByTestId('result-0')).toBeTruthy();
   });
 
-  it('opens title details and returns to the same results', () => {
+  it('opens title details and returns to the same results', async () => {
     const screen = render(<App />);
+    await screen.findByTestId('mood-cozy');
 
     fireEvent.press(screen.getByTestId('mood-cozy'));
     fireEvent.press(screen.getByTestId('mood-continue'));
@@ -50,8 +55,9 @@ describe('Your Next Binge app flow', () => {
     expect(screen.getByText('These fit what you asked for.')).toBeTruthy();
   });
 
-  it('relaxes filters rather than showing an empty screen', () => {
+  it('relaxes filters rather than showing an empty screen', async () => {
     const screen = render(<App />);
+    await screen.findByTestId('mood-romantic');
 
     fireEvent.press(screen.getByTestId('mood-romantic'));
     fireEvent.press(screen.getByTestId('mood-continue'));

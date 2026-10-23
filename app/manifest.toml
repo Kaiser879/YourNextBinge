@@ -17,6 +17,19 @@ id = "/com.amazon.vega.os@IVega_1_2"
 [[needs.module]]
 id = "/com.amazon.kepler.keplerscript_4@IKeplerScript_0"
 
+# Search: the system keyboard / input method.
+
+[[needs.module]]
+id = "/com.amazon.kepler.async_storage__async_storage_2@IAsyncStorage__AsyncStorage_1"
+
+[wants]
+[[wants.service]]
+id = "com.amazon.inputmethod.service"
+
+# Dev-only: the embedding server runs on the host at 10.0.2.2:8000.
+# Remove this when the app no longer talks to the laptop-local server.
+[network-traffic-policy.cleartext]
+allowed-domains = ["10.0.2.2", "localhost"]
 
 [components]
 [[components.interactive]]

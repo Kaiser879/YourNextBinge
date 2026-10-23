@@ -2,9 +2,12 @@
   "name": "@amazon-devices/yournextbinge",
   "version": "0.0.1",
   "private": true,
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "clean": "rm -rf node_modules buildinfo.json dist build",
+    "setup:config": "node -e \"const fs=require('fs');const p='src/config.local.ts';if(!fs.existsSync(p)){fs.copyFileSync('src/config.example.ts',p);console.log('Created '+p+' — add your TMDB key.');}else{console.log(p+' already exists.');}\"",
     "start": "react-native start",
     "test": "jest --colors ",
     "test:snapshot": "jest --colors --updateSnapshot",
@@ -15,8 +18,9 @@
     "build:app": "npm-run-all build:release",
     "build": "npm-run-all build:release",
     "release": "npm-run-all lint test build:app"
-    },
+  },
   "dependencies": {
+    "@amazon-devices/react-native-async-storage__async-storage": "~2.1.9000000001",
     "@amazon-devices/react-native-kepler": "~4.0.0",
     "react": "19.2.0",
     "react-native": "0.83.0"
@@ -25,8 +29,8 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "@amazon-devices/kepler-cli-platform": "^0",
     "@amazon-devices/eslint-plugin-kepler": "^0.1.4",
+    "@amazon-devices/kepler-cli-platform": "^0",
     "@react-native-community/cli": "20.0.0",
     "@react-native/babel-preset": "0.83.0",
     "@react-native/eslint-config": "0.83.0",
@@ -51,6 +55,8 @@
   "kepler": {
     "projectType": "application",
     "appName": "yourNextBinge",
-    "targets": ["tv"]
+    "targets": [
+      "tv"
+    ]
   }
 }

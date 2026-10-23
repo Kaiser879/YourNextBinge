@@ -19,6 +19,16 @@ Thumbs.db
 # Docs stay local (not published)
 AGENTS.md
 HANDOFF.md
-README.md
-concept.md
 your-next-binge-vega-spec.md
+
+# Shared product/planning docs ARE tracked: README.md, concept.md, docs/
+# (both developers need them on their own machines)
+
+# Local secrets — never commit
+app/src/config.local.ts
+
+# Python tooling caches
+.venv/
+__pycache__/
+*.pyc
+tools/embed/.cache/

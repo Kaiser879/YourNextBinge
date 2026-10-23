@@ -6,8 +6,8 @@ interface ScreenHeaderProps {
   eyebrow: string;
   title: string;
   subtitle?: string;
-  /** 1-based position in the four-screen flow. */
-  step: 1 | 2 | 3 | 4;
+  /** 1-based position in the v1 four-screen flow. Omitted on v2 screens. */
+  step?: number;
 }
 
 const TOTAL_STEPS = 4;
@@ -40,10 +40,12 @@ export const ScreenHeader = ({
         </Text>
       ) : null}
     </View>
-    <Text style={styles.step}>
-      {pad(step)}
-      <Text style={styles.stepTotal}>{` / ${pad(TOTAL_STEPS)}`}</Text>
-    </Text>
+    {step != null ? (
+      <Text style={styles.step}>
+        {pad(step)}
+        <Text style={styles.stepTotal}>{` / ${pad(TOTAL_STEPS)}`}</Text>
+      </Text>
+    ) : null}
   </View>
 );
 
